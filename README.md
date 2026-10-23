@@ -86,12 +86,14 @@ certificates, and logs live in `~/.local/share/hotspot-share/`.
 
 ## Remove
 
+Stop sharing first, then remove the widget:
+
 ```sh
+~/.config/omarchy/plugins/jovibe.hotspot-share/hs halt
 omarchy plugin remove jovibe.hotspot-share
 ```
 
-The server stops with the widget. Optionally delete the shared folders and
-state:
+Optionally delete the shared folders and state:
 
 ```sh
 rm -rf ~/"Hotspot Share" ~/.local/share/hotspot-share
