@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Prints "ifname<TAB>ip<TAB>paused" for the first usable LAN interface.
+# Exits 0 with no output when there is no hotspot/LAN connection.
+set -u
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/hotspot-share"
+
+line=$(ip -4 -o addr show scope global 2>/dev/null |
+    awk '$2 !~ /^(lo|docker|br-|veth|virbr|tun|tap|tailscale|zt|wg)/ { print $2 " " $4; exit }')
+
+[ -n "$line" ] || exit 0
+
+ifname=${line%% *}
+addr=${line##* }
+paused=0
+[ -e "$DATA/paused" ] && paused=1
+
+printf '%s\t%s\t%s\n' "$ifname" "${addr%%/*}" "$paused"

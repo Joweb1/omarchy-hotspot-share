@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "jovibe.hotspot-share",
+  "name": "Hotspot Share",
+  "version": "1.0.0",
+  "author": "jovibe",
+  "description": "Share files with your phone over the hotspot. Appears while a LAN/hotspot connection is active.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Hotspot Share",
+    "description": "Appears when a hotspot or LAN connection is active; click to share files with your phone",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "alwaysShow": false
+    },
+    "schema": [
+      {
+        "key": "alwaysShow",
+        "type": "boolean",
+        "label": "Show the icon even without a network connection",
+        "defaultValue": false
+      }
+    ]
+  }
+}
