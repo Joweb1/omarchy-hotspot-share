@@ -578,8 +578,19 @@ Panel {
               required property var modelData
               width: column.width
               entry: modelData
-              deleteVerb: "delete-recv"
+              deleteVerb: "dismiss-recv"
             }
+          }
+
+          Text {
+            visible: root.receivedFiles.length > 0
+            width: parent.width
+            textFormat: Text.PlainText
+            text: "Showing the 6 most recent. × hides a file from this list; nothing is deleted from disk."
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
           }
 
           PillButton {

@@ -81,8 +81,10 @@ Move it:
 omarchy bar move jovibe.hotspot-share --section right
 ```
 
-Files live in `~/Hotspot Share/send` and `~/Hotspot Share/received`. State,
-certificates, and logs live in `~/.local/share/hotspot-share/`.
+Files live in `~/Hotspot Share/send` and `~/Hotspot Share/received`. The
+received list shows the six newest files; **×** only hides a file from the
+list (it is never deleted). State, certificates, logs, and the dismissed list
+live in `~/.local/share/hotspot-share/`.
 
 ## Remove
 

@@ -1,6 +1,6 @@
 import http from 'node:http';
 import https from 'node:https';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, extname, join, normalize } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -17,6 +17,22 @@ const PUBLIC = join(ROOT, 'public');
 const BASE = process.env.HOTSPOT_SHARE_DIR ?? join(homedir(), 'Hotspot Share');
 const DIRS = { send: join(BASE, 'send'), received: join(BASE, 'received') };
 const STATE_DIR = join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local/share'), 'hotspot-share');
+const DISMISSED = join(STATE_DIR, 'dismissed.json');
+const loadDismissed = () => {
+  try {
+    const list = JSON.parse(readFileSync(DISMISSED, 'utf8'));
+    return new Set(Array.isArray(list) ? list : []);
+  } catch {
+    return new Set();
+  }
+};
+let dismissed = loadDismissed();
+const saveDismissed = () => {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(DISMISSED, JSON.stringify([...dismissed]));
+  } catch {}
+};
 
 for (const d of Object.values(DIRS)) mkdirSync(d, { recursive: true });
 
@@ -83,7 +99,7 @@ function snapshot(forId, isHost) {
     theme,
     devices: [...devices.values()].map(({ id, label, ip }) => ({ id, label, ip })),
     send: listDir(DIRS.send),
-    received: isHost ? listDir(DIRS.received) : [],
+    received: isHost ? listDir(DIRS.received).filter((f) => !dismissed.has(f.name)).slice(0, 6) : [],
     offers: [...offers.values()]
       .filter((o) => isHost || o.from === forId)
       .map(({ cancel, ...o }) => o)
@@ -274,9 +290,20 @@ async function handle(req, res, secure) {
       }
     }
 
+    if ((m = path.match(/^\/api\/received\/(.+)\/dismiss$/)) && method === 'POST') {
+      if (!hostOnly()) return;
+      dismissed.add(safeName(decodeURIComponent(m[1])));
+      saveDismissed();
+      broadcast();
+      return json(res, 200, { ok: true });
+    }
+
     if ((m = path.match(/^\/api\/received\/(.+)$/)) && method === 'DELETE') {
       if (!hostOnly()) return;
-      rmSync(join(DIRS.received, safeName(decodeURIComponent(m[1]))), { force: true });
+      const name = safeName(decodeURIComponent(m[1]));
+      rmSync(join(DIRS.received, name), { force: true });
+      dismissed.delete(name);
+      saveDismissed();
       broadcast();
       return json(res, 200, { ok: true });
     }
