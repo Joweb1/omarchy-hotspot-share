@@ -20,6 +20,15 @@ The plugin runs from `~/.config/omarchy/plugins/jovibe.hotspot-share/` and owns
 its server process. Nothing is copied to `~/.local/bin`, no systemd unit is
 installed, and the installer never runs privileged commands.
 
+If `--enable` prints `omarchy-shell is not responding`, the shell is still
+busy reloading plugins and the clone has already succeeded. Give the IPC call
+more time (or enable it afterwards):
+
+```sh
+OMARCHY_SHELL_IPC_TIMEOUT=20s omarchy plugin add \
+  https://github.com/Joweb1/omarchy-hotspot-share.git --enable
+```
+
 Validate a checkout before publishing:
 
 ```sh
