@@ -90,9 +90,6 @@ case "$cmd" in
     dismiss-recv)
         curl -fsS --max-time 5 -X POST "$BASE/api/received/$(uri "$1")/dismiss" >/dev/null
         ;;
-    delete-recv)
-        curl -fsS --max-time 5 -X DELETE "$BASE/api/received/$(uri "$1")" >/dev/null
-        ;;
     open-send)
         xdg-open "$HOME/Hotspot Share/send" >/dev/null 2>&1 || true
         ;;
@@ -103,7 +100,7 @@ case "$cmd" in
         printf '%s' "$1" | wl-copy
         ;;
     *)
-        echo "usage: hs state|start|stop|halt|firewall|accept ID|decline ID|delete-send NAME|dismiss-recv NAME|delete-recv NAME|open-send|open-received|copy TEXT" >&2
+        echo "usage: hs state|start|stop|halt|firewall|accept ID|decline ID|delete-send NAME|dismiss-recv NAME|open-send|open-received|copy TEXT" >&2
         exit 64
         ;;
 esac

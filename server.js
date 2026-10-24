@@ -298,15 +298,8 @@ async function handle(req, res, secure) {
       return json(res, 200, { ok: true });
     }
 
-    if ((m = path.match(/^\/api\/received\/(.+)$/)) && method === 'DELETE') {
-      if (!hostOnly()) return;
-      const name = safeName(decodeURIComponent(m[1]));
-      rmSync(join(DIRS.received, name), { force: true });
-      dismissed.delete(name);
-      saveDismissed();
-      broadcast();
-      return json(res, 200, { ok: true });
-    }
+    // Received files are never deleted from the widget. The only host action
+    // is dismissing a row from the popup; the file stays on disk.
 
     if (path === '/api/offer' && method === 'POST') {
       const body = await readJson(req);
