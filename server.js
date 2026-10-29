@@ -122,6 +122,15 @@ const json = (res, code, body) => {
   res.end(JSON.stringify(body));
 };
 
+// Anything from the network can be malformed: percent-decoding and URL parsing throw on it.
+// Treat that as a bad request for that one client, never as a reason to stop the server.
+const decodePart = (s) => { try { return decodeURIComponent(s); } catch { return null; } };
+const originHost = (o) => { try { return new URL(o).host; } catch { return null; } };
+const badRequest = (res) => json(res, 400, { error: 'bad request' });
+
+// A file that vanishes mid-request emits 'error' on the stream; without a listener that is fatal.
+const pipeFile = (res, file) => createReadStream(file).on('error', () => res.destroy()).pipe(res);
+
 const readJson = (req) =>
   new Promise((resolve, reject) => {
     let buf = '';
@@ -158,7 +167,9 @@ const versionHash = () => {
 };
 
 function serveStatic(req, res, pathname) {
-  let rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
+  const decoded = decodePart(pathname);
+  if (decoded === null) return badRequest(res);
+  let rel = normalize(decoded).replace(/^(\.\.[/\\])+/, '');
   if (rel === '/' || rel === '.') rel = '/index.html';
   const file = join(PUBLIC, rel);
   if (!file.startsWith(PUBLIC) || !existsSync(file) || !statSync(file).isFile()) {
@@ -172,7 +183,7 @@ function serveStatic(req, res, pathname) {
   }
   headers['Cache-Control'] = 'no-cache';
   res.writeHead(200, headers);
-  createReadStream(file).pipe(res);
+  pipeFile(res, file);
 }
 
 function download(res, dir, name) {
@@ -183,7 +194,7 @@ function download(res, dir, name) {
     'Content-Length': statSync(file).size,
     'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(basename(file))}`,
   });
-  createReadStream(file).pipe(res);
+  pipeFile(res, file);
 }
 
 function decide(offer, accept) {
@@ -210,7 +221,20 @@ function newOffer(from, files) {
 }
 
 // ---------- routes ----------
+// Whatever goes wrong while routing one request (malformed URL, bad percent-encoding, odd
+// headers) is answered on that request. It must never escape as an unhandled rejection,
+// which Node turns into process exit and takes both listeners and every transfer with it.
 async function handle(req, res, secure) {
+  try {
+    await route(req, res, secure);
+  } catch (e) {
+    const bad = e instanceof URIError || e?.code === 'ERR_INVALID_URL';
+    if (res.headersSent) return res.destroy();
+    try { json(res, bad ? 400 : 500, { error: bad ? 'bad request' : 'server error' }); } catch { res.destroy(); }
+  }
+}
+
+async function route(req, res, secure) {
   const url = new URL(req.url, 'http://x');
   const path = url.pathname;
   const host = isLocalAddress(req.socket.remoteAddress);
@@ -220,7 +244,7 @@ async function handle(req, res, secure) {
   if (!secure && !host) {
     if (path === '/ca.crt') {
       res.writeHead(200, { 'Content-Type': 'application/x-x509-ca-cert', 'Content-Disposition': 'attachment; filename="hotspot-share-ca.crt"' });
-      return createReadStream(certs.caPath).pipe(res);
+      return pipeFile(res, certs.caPath);
     }
     if (path.startsWith('/vendor/') || path === '/style.css' || path === '/icon.svg') return serveStatic(req, res, path);
     return serveStatic(req, res, '/setup.html');
@@ -228,7 +252,7 @@ async function handle(req, res, secure) {
 
   if (method !== 'GET' && method !== 'HEAD') {
     const origin = req.headers.origin;
-    if (origin && new URL(origin).host !== req.headers.host) return json(res, 403, { error: 'origin' });
+    if (origin && originHost(origin) !== req.headers.host) return json(res, 403, { error: 'origin' });
   }
 
   if (!path.startsWith('/api/')) return serveStatic(req, res, path);
@@ -255,7 +279,7 @@ async function handle(req, res, secure) {
 
     if (path === '/api/ca.crt') {
       res.writeHead(200, { 'Content-Type': 'application/x-x509-ca-cert' });
-      return createReadStream(certs.caPath).pipe(res);
+      return pipeFile(res, certs.caPath);
     }
 
     // Snapshot for the native Omarchy bar popup (host only).
@@ -273,12 +297,16 @@ async function handle(req, res, secure) {
     let m;
     if ((m = path.match(/^\/api\/dl\/(send|received)\/(.+)$/))) {
       if (m[1] === 'received' && !hostOnly()) return;
-      return download(res, DIRS[m[1]], decodeURIComponent(m[2]));
+      const name = decodePart(m[2]);
+      if (name === null) return badRequest(res);
+      return download(res, DIRS[m[1]], name);
     }
 
     if ((m = path.match(/^\/api\/send\/(.+)$/))) {
       if (!hostOnly()) return;
-      const name = safeName(decodeURIComponent(m[1]));
+      const decoded = decodePart(m[1]);
+      if (decoded === null) return badRequest(res);
+      const name = safeName(decoded);
       if (method === 'DELETE') { rmSync(join(DIRS.send, name), { force: true }); broadcast(); return json(res, 200, { ok: true }); }
       if (method === 'PUT') {
         const tmp = join(DIRS.send, `.${randomUUID()}.part`);
@@ -292,7 +320,9 @@ async function handle(req, res, secure) {
 
     if ((m = path.match(/^\/api\/received\/(.+)\/dismiss$/)) && method === 'POST') {
       if (!hostOnly()) return;
-      dismissed.add(safeName(decodeURIComponent(m[1])));
+      const decoded = decodePart(m[1]);
+      if (decoded === null) return badRequest(res);
+      dismissed.add(safeName(decoded));
       saveDismissed();
       broadcast();
       return json(res, 200, { ok: true });
@@ -366,8 +396,10 @@ async function handle(req, res, secure) {
 const ips = () => lanAddresses().map((a) => a.ip);
 let tls = certs.ensure(ips());
 
-const httpsServer = https.createServer(tls, (req, res) => handle(req, res, true));
-const httpServer = http.createServer((req, res) => handle(req, res, false));
+const httpsServer = https.createServer(tls, (req, res) => { handle(req, res, true).catch(() => res.destroy()); });
+const httpServer = http.createServer((req, res) => { handle(req, res, false).catch(() => res.destroy()); });
+// Last resort: a stray rejection is logged, not fatal. Request errors are handled in handle().
+process.on('unhandledRejection', (e) => console.error('unhandled rejection', e?.message ?? e));
 for (const s of [httpServer, httpsServer]) { s.requestTimeout = 0; s.headersTimeout = 60_000; }
 
 httpsServer.listen(HTTPS_PORT, '0.0.0.0');

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "jovibe.hotspot-share",
   "name": "Hotspot Share",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "jovibe",
   "description": "Share files with your phone over the hotspot. Appears while a LAN/hotspot connection is active.",
   "kinds": [
