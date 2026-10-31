@@ -128,3 +128,7 @@ Source address alone doesn't identify the owner: other local accounts reach the 
 secret kept in `~/.local/share/hotspot-share/host.token` (mode 0600, regenerated on every
 start). The bar widget and `hs` send it automatically; `hs open-ui` signs your browser in.
 Other local accounts are treated like any other device on the network.
+
+Files on disk are private too: `~/Hotspot Share` and everything in it is owner-only
+(directories 0700, files 0600), including files from earlier versions, which are tightened
+when the server starts.

@@ -34,7 +34,24 @@ const saveDismissed = () => {
   } catch {}
 };
 
-for (const d of Object.values(DIRS)) mkdirSync(d, { recursive: true });
+// Shared and received files are private to the owner on disk: the server is the only thing that
+// should serve them. Everything this process creates is owner-only, and anything left over from
+// earlier versions (created with the default umask) is tightened at startup.
+process.umask(0o077);
+const lockDown = (dir) => {
+  try {
+    chmodSync(dir, 0o700);
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isFile()) chmodSync(p, 0o600);
+      else if (e.isDirectory()) lockDown(p);
+    }
+  } catch {}
+};
+mkdirSync(BASE, { recursive: true, mode: 0o700 });
+for (const d of Object.values(DIRS)) mkdirSync(d, { recursive: true, mode: 0o700 });
+chmodSync(BASE, 0o700);
+for (const d of Object.values(DIRS)) lockDown(d);
 
 // Owner credential. Source address alone cannot identify the owner: any other local account
 // reaches this server from 127.0.0.1 too. Owner-only requests must carry this secret, which
@@ -371,7 +388,7 @@ async function route(req, res, secure) {
       if (method === 'DELETE') { rmSync(join(DIRS.send, name), { force: true }); broadcast(); return json(res, 200, { ok: true }); }
       if (method === 'PUT') {
         const tmp = join(DIRS.send, `.${randomUUID()}.part`);
-        const out = createWriteStream(tmp);
+        const out = createWriteStream(tmp, { mode: 0o600 });
         req.pipe(out);
         req.on('aborted', () => { out.destroy(); rmSync(tmp, { force: true }); });
         out.on('finish', () => { renameSync(tmp, uniquePath(DIRS.send, name)); broadcast(); json(res, 200, { ok: true }); });
@@ -423,7 +440,7 @@ async function route(req, res, secure) {
       if (!o || !f || (o.from !== id && !host) || o.status !== 'accepted' || f.status !== 'accepted') return json(res, 409, { error: 'not accepted' });
       f.status = 'receiving';
       const tmp = join(DIRS.received, `.${randomUUID()}.part`);
-      const out = createWriteStream(tmp);
+      const out = createWriteStream(tmp, { mode: 0o600 });
       let last = 0;
       req.on('data', (d) => {
         f.got += d.length;
