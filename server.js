@@ -62,12 +62,19 @@ const label = (ua = '') => {
 // Filesystems cap a path component at 255 bytes, not characters. Trim to a byte budget on a code
 // point boundary, keeping a reasonable extension; the budget leaves room for the " (N)" suffix.
 const clampBytes = (name, max) => {
-  const len = (s) => Buffer.byteLength(s);
-  if (len(name) <= max) return name;
+  if (name.length <= max && Buffer.byteLength(name) <= max) return name;
   let ext = extname(name);
-  if (len(ext) > 20) ext = '';
-  let stem = name.slice(0, name.length - ext.length);
-  while (stem && len(stem) + len(ext) > max) stem = Array.from(stem).slice(0, -1).join('');
+  if (Buffer.byteLength(ext) > 20) ext = '';
+  const budget = max - Buffer.byteLength(ext);
+  // Single pass over at most `budget` code points: the input is attacker-controlled and may be huge.
+  let stem = '';
+  let bytes = 0;
+  for (const ch of name.slice(0, Math.min(name.length - ext.length, budget * 2))) {
+    const b = Buffer.byteLength(ch);
+    if (bytes + b > budget) break;
+    stem += ch;
+    bytes += b;
+  }
   return stem + ext;
 };
 
