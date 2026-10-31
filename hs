@@ -25,6 +25,10 @@ node_bin() {
     return 1
 }
 
+# Owner credential written by the server (0600). Sent on every owner-only request.
+# The secret goes in through a curl config on a pipe, never on the command line (visible in ps).
+owner() { curl "$@" -K <(printf 'header = "X-Hotspot-Host: %s"\n' "$(cat "$DATA/host.token" 2>/dev/null)"); }
+
 alive() { curl -fsS --max-time 1 "$BASE/api/ping" >/dev/null 2>&1; }
 
 start() {
@@ -55,7 +59,7 @@ stop() {
 
 case "$cmd" in
     state)
-        curl -fsS --max-time 2 "$BASE/api/state?id=shell"
+        owner -fsS --max-time 2 "$BASE/api/state?id=shell"
         ;;
     start)
         start
@@ -77,18 +81,18 @@ case "$cmd" in
         ufw reload' >/dev/null
         ;;
     accept)
-        curl -fsS --max-time 5 -X POST -H 'Content-Type: application/json' \
+        owner -fsS --max-time 5 -X POST -H 'Content-Type: application/json' \
             --data '{"accept":true}' "$BASE/api/offer/$1/decision" >/dev/null
         ;;
     decline)
-        curl -fsS --max-time 5 -X POST -H 'Content-Type: application/json' \
+        owner -fsS --max-time 5 -X POST -H 'Content-Type: application/json' \
             --data '{"accept":false}' "$BASE/api/offer/$1/decision" >/dev/null
         ;;
     delete-send)
-        curl -fsS --max-time 5 -X DELETE "$BASE/api/send/$(uri "$1")" >/dev/null
+        owner -fsS --max-time 5 -X DELETE "$BASE/api/send/$(uri "$1")" >/dev/null
         ;;
     dismiss-recv)
-        curl -fsS --max-time 5 -X POST "$BASE/api/received/$(uri "$1")/dismiss" >/dev/null
+        owner -fsS --max-time 5 -X POST "$BASE/api/received/$(uri "$1")/dismiss" >/dev/null
         ;;
     send-files)
         # Pick files in the desktop file chooser and queue them in the send folder.
@@ -98,8 +102,17 @@ case "$cmd" in
         # mistaken for the start of another selected path.
         while IFS= read -r -d '' f; do
             [ -f "$f" ] || continue
-            curl -fsS --max-time 0 -X PUT -T "$f" "$BASE/api/send/$(uri "$(basename -- "$f")")" >/dev/null || true
+            owner -fsS --max-time 0 -X PUT -T "$f" "$BASE/api/send/$(uri "$(basename -- "$f")")" >/dev/null || true
         done < <(python3 "$DIR/lib/pick-files.py")
+        ;;
+    open-ui)
+        # Sign the browser in as the owner without putting the secret on a command line:
+        # the token goes into a private local page that posts it to the server.
+        start
+        page="$DATA/open.html"
+        ( umask 077; printf '<!doctype html><meta charset=utf-8><body onload="document.forms[0].submit()"><form method=post action="%s/api/host-login"><input type=hidden name=token value="%s"></form>' "$BASE" "$(cat "$DATA/host.token")" >"$page" )
+        xdg-open "$page" >/dev/null 2>&1 || true
+        ( sleep 20; rm -f "$page" ) >/dev/null 2>&1 &
         ;;
     open-send)
         xdg-open "$HOME/Hotspot Share/send" >/dev/null 2>&1 || true
@@ -111,7 +124,7 @@ case "$cmd" in
         printf '%s' "$1" | wl-copy
         ;;
     *)
-        echo "usage: hs state|start|stop|halt|firewall|accept ID|decline ID|delete-send NAME|dismiss-recv NAME|send-files|open-send|open-received|copy TEXT" >&2
+        echo "usage: hs state|start|stop|halt|firewall|accept ID|decline ID|delete-send NAME|dismiss-recv NAME|send-files|open-ui|open-send|open-received|copy TEXT" >&2
         exit 64
         ;;
 esac

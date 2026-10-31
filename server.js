@@ -1,9 +1,9 @@
 import http from 'node:http';
 import https from 'node:https';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
+import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, extname, join, normalize } from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createCerts, HOSTNAME } from './lib/certs.js';
@@ -35,6 +35,34 @@ const saveDismissed = () => {
 };
 
 for (const d of Object.values(DIRS)) mkdirSync(d, { recursive: true });
+
+// Owner credential. Source address alone cannot identify the owner: any other local account
+// reaches this server from 127.0.0.1 too. Owner-only requests must carry this secret, which
+// lives in a 0700 directory in a 0600 file and is regenerated on every start.
+const HOST_TOKEN = randomBytes(32).toString('hex');
+const HOST_TOKEN_FILE = join(STATE_DIR, 'host.token');
+try {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+  chmodSync(STATE_DIR, 0o700);
+  writeFileSync(HOST_TOKEN_FILE, HOST_TOKEN + '\n', { mode: 0o600 });
+  chmodSync(HOST_TOKEN_FILE, 0o600);
+} catch (e) {
+  console.error('cannot store owner token; owner features disabled:', e.message);
+}
+const tokenMatches = (candidate) => {
+  if (typeof candidate !== 'string' || candidate.length !== HOST_TOKEN.length) return false;
+  return timingSafeEqual(Buffer.from(candidate), Buffer.from(HOST_TOKEN));
+};
+const cookieValue = (req, name) => {
+  for (const part of String(req.headers.cookie ?? '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+  }
+  return '';
+};
+const isOwner = (req) =>
+  isLocalAddress(req.socket.remoteAddress) &&
+  (tokenMatches(req.headers['x-hotspot-host']) || tokenMatches(cookieValue(req, 'hs_host')));
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -256,8 +284,22 @@ async function handle(req, res, secure) {
 async function route(req, res, secure) {
   const url = new URL(req.url, 'http://x');
   const path = url.pathname;
-  const host = isLocalAddress(req.socket.remoteAddress);
+  const host = isOwner(req);
   const method = req.method;
+
+  // Opened from a private local file by `hs open-ui`; the page posts the owner token here.
+  // It is exempt from the Origin check because a file:// page sends `Origin: null`.
+  if (path === '/api/host-login' && method === 'POST') {
+    if (!isLocalAddress(req.socket.remoteAddress)) return json(res, 403, { error: 'host only' });
+    let body = '';
+    for await (const d of req) { body += d; if (body.length > 1024) return badRequest(res); }
+    if (!tokenMatches(new URLSearchParams(body).get('token'))) return json(res, 403, { error: 'host only' });
+    res.writeHead(303, {
+      'Set-Cookie': `hs_host=${HOST_TOKEN}; Path=/; HttpOnly; SameSite=Strict`,
+      Location: '/', 'Cache-Control': 'no-store',
+    });
+    return res.end();
+  }
 
   // Plain HTTP is only the app for this machine; others get the CA setup page.
   if (!secure && !host) {

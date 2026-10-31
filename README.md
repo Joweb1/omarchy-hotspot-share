@@ -120,3 +120,11 @@ Anything in the send folder can be downloaded by every device on the network, so
 shared only briefly: files expire 10 minutes after they arrive (set
 `HOTSPOT_SHARE_SEND_TTL_MIN` to change this), and the folder is emptied whenever sharing
 starts or stops. Received files are never deleted.
+
+## Owner access
+
+Source address alone doesn't identify the owner: other local accounts reach the server from
+`127.0.0.1` too. Owner-only actions (state, received files, accept/decline) require a random
+secret kept in `~/.local/share/hotspot-share/host.token` (mode 0600, regenerated on every
+start). The bar widget and `hs` send it automatically; `hs open-ui` signs your browser in.
+Other local accounts are treated like any other device on the network.
