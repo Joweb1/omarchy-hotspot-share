@@ -191,6 +191,13 @@ Panel {
     onExited: function(exitCode) { if (exitCode !== 0) root.qrFailed = true }
   }
 
+  // Runs on its own so the long-lived file chooser doesn't block other actions.
+  Process {
+    id: pickProc
+    command: [root.hs, "send-files"]
+    onExited: function() { root.refresh() }
+  }
+
   Process {
     id: actionProc
     command: []
@@ -427,6 +434,10 @@ Panel {
               label: root.paused || !root.serviceUp ? "start sharing" : "stop sharing"
               primary: root.paused || !root.serviceUp
               onClicked: root.paused || !root.serviceUp ? root.act("start") : root.act("stop")
+            }
+            PillButton {
+              label: "send file"
+              onClicked: pickProc.running = true
             }
             PillButton {
               label: "send folder"
