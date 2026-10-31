@@ -59,9 +59,21 @@ const label = (ua = '') => {
   return 'device';
 };
 
+// Filesystems cap a path component at 255 bytes, not characters. Trim to a byte budget on a code
+// point boundary, keeping a reasonable extension; the budget leaves room for the " (N)" suffix.
+const clampBytes = (name, max) => {
+  const len = (s) => Buffer.byteLength(s);
+  if (len(name) <= max) return name;
+  let ext = extname(name);
+  if (len(ext) > 20) ext = '';
+  let stem = name.slice(0, name.length - ext.length);
+  while (stem && len(stem) + len(ext) > max) stem = Array.from(stem).slice(0, -1).join('');
+  return stem + ext;
+};
+
 const safeName = (raw) => {
   let n = basename(String(raw ?? '').replace(/\\/g, '/')).replace(/[\x00-\x1f]/g, '').trim().replace(/^\.+/, '');
-  if (n.length > 200) n = n.slice(0, 200);
+  n = clampBytes(n, 200);
   return n || 'file';
 };
 
@@ -371,10 +383,17 @@ async function route(req, res, secure) {
       const fail = () => { out.destroy(); rmSync(tmp, { force: true }); if (f.status === 'receiving') f.status = 'failed'; broadcast(); };
       req.on('aborted', fail);
       req.on('error', fail);
+      out.on('error', () => { fail(); if (!res.headersSent) json(res, 500, { error: 'could not save file' }); });
       req.pipe(out);
       out.on('finish', () => {
         if (f.status !== 'receiving') return;
-        renameSync(tmp, uniquePath(DIRS.received, f.name));
+        try {
+          renameSync(tmp, uniquePath(DIRS.received, f.name));
+        } catch (e) {
+          fail();
+          if (!res.headersSent) json(res, 500, { error: 'could not save file' });
+          return;
+        }
         f.status = 'done';
         if (o.files.every((x) => ['done', 'failed'].includes(x.status))) {
           o.status = 'done';
