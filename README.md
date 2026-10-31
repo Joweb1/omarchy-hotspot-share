@@ -41,7 +41,7 @@ omarchy plugin validate ./omarchy-hotspot-share
 2. Click the phone icon in the bar. Sharing starts automatically.
 3. On the phone, open the `setup` URL once to install the local certificate,
    then use the `ip` URL (or scan the `ip` QR code).
-4. Send files from the laptop with **send folder**, or from the phone through
+4. Send files from the laptop with **send file**, or from the phone through
    the web app. Incoming offers appear in the widget.
 
 The widget starts the server when a LAN/hotspot address appears and stops it

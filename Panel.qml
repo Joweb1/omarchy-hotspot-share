@@ -37,7 +37,7 @@ Panel {
     ? (qrMode === "setup" ? urlSetup : qrMode === "name" ? urlName : urlIp)
     : ""
   readonly property var devices: (state && state.devices) ? state.devices : []
-  readonly property var sendFiles: (state && state.send) ? state.send : []
+  readonly property var sendFiles: (state && state.send) ? state.send.slice(0, 2) : []
   readonly property var receivedFiles: (state && state.received) ? state.received : []
   readonly property var offers: (state && state.offers)
     ? state.offers.filter(function(o) { return o.status === "pending" || o.status === "accepted" })
@@ -440,10 +440,6 @@ Panel {
               onClicked: pickProc.running = true
             }
             PillButton {
-              label: "send folder"
-              onClicked: root.act("open-send")
-            }
-            PillButton {
               label: "fix firewall"
               onClicked: root.act("firewall")
             }
@@ -561,7 +557,7 @@ Panel {
 
           PanelSectionHeader {
             visible: root.sendFiles.length > 0
-            text: "SEND FOLDER"
+            text: "RECENTLY SENT"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }
