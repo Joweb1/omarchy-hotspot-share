@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Open the desktop file chooser (xdg-desktop-portal) and print the chosen file paths, one per line."""
+"""Open the desktop file chooser (xdg-desktop-portal) and print the chosen file paths, NUL-separated.
+
+Paths may legally contain newlines, so a newline is not a safe separator."""
 import sys
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote_to_bytes, urlparse
 
 import gi
 gi.require_version('Gio', '2.0')
@@ -22,7 +24,8 @@ def on_response(_conn, _sender, _path, _iface, _signal, params, _data):
         for uri in results.get('uris', []):
             u = urlparse(uri)
             if u.scheme == 'file':
-                print(unquote(u.path))
+                sys.stdout.buffer.write(unquote_to_bytes(u.path) + b'\0')
+                sys.stdout.buffer.flush()
         status[0] = 0
     loop.quit()
 

@@ -94,11 +94,12 @@ case "$cmd" in
         # Pick files in the desktop file chooser and queue them in the send folder.
         # Uploading through the server keeps names sanitised and de-duplicated.
         start
-        picked="$(python3 "$DIR/lib/pick-files.py")" || exit 0
-        while IFS= read -r f; do
+        # Paths are NUL-separated: a filename may contain a newline, which must not be
+        # mistaken for the start of another selected path.
+        while IFS= read -r -d '' f; do
             [ -f "$f" ] || continue
             curl -fsS --max-time 0 -X PUT -T "$f" "$BASE/api/send/$(uri "$(basename -- "$f")")" >/dev/null || true
-        done <<<"$picked"
+        done < <(python3 "$DIR/lib/pick-files.py")
         ;;
     open-send)
         xdg-open "$HOME/Hotspot Share/send" >/dev/null 2>&1 || true
