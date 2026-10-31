@@ -470,5 +470,30 @@ setInterval(() => {
 
 for (const d of Object.values(DIRS)) { try { watch(d, () => broadcast()); } catch {} }
 
-process.on('SIGTERM', () => { mdns.stop(); process.exit(0); });
-process.on('SIGINT', () => { mdns.stop(); process.exit(0); });
+// Everything in the send folder is readable by any device on the network, so it is only
+// ever shared for a short while. Files expire SEND_TTL after they arrived (ctime, so a file
+// moved in with an old mtime still gets its full window), and the folder is emptied when
+// the server starts or stops. Received files are never touched.
+const SEND_TTL = Math.max(1, Number(process.env.HOTSPOT_SHARE_SEND_TTL_MIN ?? 10)) * 60_000;
+const purgeSend = (olderThan = 0) => {
+  let removed = false;
+  try {
+    for (const e of readdirSync(DIRS.send, { withFileTypes: true })) {
+      if (!e.isFile()) continue;
+      const p = join(DIRS.send, e.name);
+      try {
+        // In-progress uploads are dot-files; leave them unless purging everything.
+        if (olderThan && (e.name.startsWith('.') || Date.now() - statSync(p).ctimeMs < olderThan)) continue;
+        rmSync(p, { force: true });
+        removed = true;
+      } catch {}
+    }
+  } catch {}
+  if (removed) broadcast();
+};
+purgeSend();
+setInterval(() => purgeSend(SEND_TTL), 15_000);
+
+const shutdown = () => { purgeSend(); mdns.stop(); process.exit(0); };
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

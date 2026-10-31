@@ -113,3 +113,10 @@ rm -rf ~/"Hotspot Share" ~/.local/share/hotspot-share
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Send-folder privacy
+
+Anything in the send folder can be downloaded by every device on the network, so it is
+shared only briefly: files expire 10 minutes after they arrive (set
+`HOTSPOT_SHARE_SEND_TTL_MIN` to change this), and the folder is emptied whenever sharing
+starts or stops. Received files are never deleted.
